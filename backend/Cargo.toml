@@ -1,0 +1,20 @@
+[package]
+name = "stream-chat-reader"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+anyhow = "1.0.99"
+axum = { version = "0.8.4", features = ["macros", "ws"] }
+blake3 = "1.8.2"
+brainrot = "0.2.2"
+chrono = "0.4.41"
+futures-util = "0.3.31"
+rusqlite = "0.37.0"
+serde = { version = "1.0.219", features = ["derive"] }
+serde_json = "1.0.143"
+tokio = { version = "1.47.1", features = ["full"] }
+tower-http = { version = "0.6.6", features = ["cors"] }
+tracing = "0.1.41"
+tracing-subscriber = "0.3.19"
+uuid = { version = "1.18.0", features = ["v7"] }
