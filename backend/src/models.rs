@@ -1,11 +1,11 @@
 use std::{collections::HashMap, sync::{atomic::AtomicUsize, Arc, Mutex}};
 
-use blake3::Hash;
+use clap::Parser;
 use tokio::sync::broadcast;
 
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct ChatMessage {
-    pub id: u128,
+    pub id: String,
     pub platform: String,
     pub channel: String,
     pub username: String,
@@ -27,6 +27,18 @@ pub struct AppState {
     pub client_sender: broadcast::Sender<ChatMessage>,
     pub active_connections: AtomicUsize,
     pub listened_channels: Arc<Mutex<HashMap<String, HashMap<String, tokio::task::JoinHandle<()>>>>>, 
+}
+
+#[derive(Parser, Debug, Clone)]
+#[command(version, about, long_about = None)]
+pub struct Args {
+    /// The address to bind the server to
+    #[arg(short = 'H', long, default_value = "127.0.0.1")]
+    pub host: String,
+    
+    /// The port to bind the server to
+    #[arg(short, long, default_value = "3000")]
+    pub port: u16,
 }
 
 #[derive(serde::Serialize, serde::Deserialize, Debug)]

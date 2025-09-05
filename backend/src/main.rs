@@ -1,12 +1,12 @@
-use std::{collections::HashMap, net::SocketAddr, sync::{atomic::{AtomicUsize, Ordering}, Arc, Mutex}};
+use std::{collections::HashMap, sync::{atomic::{AtomicUsize, Ordering}, Arc, Mutex}};
 use tracing::{info, warn};
 use axum::{extract::{ws::WebSocket, Path, Query, State, WebSocketUpgrade}, http::StatusCode, response::Response, routing::{any, delete, get, post}, Json, Router};
 use tokio::sync::broadcast;
 use tower_http::cors::{Any, CorsLayer};
+use tower_http::services::ServeDir;
 use futures_util::{sink::SinkExt, stream::{StreamExt, SplitSink, SplitStream}};
-use tracing_subscriber::util;
 
-use crate::models::{AdminCommand, AppState};
+use crate::{models::{AdminCommand, AppState}, utils::parse_args};
 
 mod utils;
 mod models;
@@ -597,19 +597,22 @@ async fn main() {
         }
     }
 
+    let args = parse_args();
+
     let app = Router::new()
-        .route("/ws", any(client_ws_handler))
-        .route("/admin/ws", any(admin_ws_handler))
+        .fallback_service(ServeDir::new("static"))
+        .route("/api/ws", any(client_ws_handler))
+        .route("/api/admin/ws", any(admin_ws_handler))
         
-        .route("/messages", get(get_messages))
-        .route("/publish/{id}", post(publish_message))
+        .route("/api/messages", get(get_messages))
+        .route("/api/publish/{id}", post(publish_message))
         
-        .route("/channels", get(get_channels))
-        .route("/channels/{platform}/{id}", post(add_channel))
-        .route("/channels/{platform}/{id}", delete(delete_channel))
+        .route("/api/channels", get(get_channels))
+        .route("/api/channels/{platform}/{id}", post(add_channel))
+        .route("/api/channels/{platform}/{id}", delete(delete_channel))
         
-        .route("/listen/{platform}/{id}", get(listen_channel))
-        .route("/unlisten/{platform}/{id}", post(unlisten_channel))
+        .route("/api/listen/{platform}/{id}", get(listen_channel))
+        .route("/api/unlisten/{platform}/{id}", post(unlisten_channel))
 
         .layer(
             CorsLayer::new()
@@ -619,9 +622,9 @@ async fn main() {
         )
         .with_state(state);
     
-    let addr: SocketAddr = "0.0.0.0:3000".parse().unwrap();
-    tracing::info!("Listening on http://{addr}");
-    let listener = tokio::net::TcpListener::bind(addr).await.unwrap();
+    tracing::info!("Server running on {}:{}", args.host, args.port);
+    let listener = tokio::net::TcpListener::bind((args.host, args.port)).await
+        .expect("Failed to bind TCP listener");
 
     axum::serve(listener, app).await.unwrap();
 }

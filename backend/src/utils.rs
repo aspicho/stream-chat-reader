@@ -1,8 +1,11 @@
 use std::{collections::HashMap, sync::{Arc, Mutex}};
 
 use brainrot::{twitch, youtube::{self, Action, ChatItem}, TwitchChat, TwitchChatEvent};
+use clap::Parser;
 use futures_util::StreamExt;
-use tracing::info;
+use tracing::{info, warn};
+
+use crate::models::Args;
 
 
 pub fn initialize_db() -> rusqlite::Connection {
@@ -87,7 +90,7 @@ pub async fn listen_to_twitch(
                     info!("Twitch message from {}: {}", user.display_name, content);
 
                     let chat_message = crate::models::ChatMessage {
-                        id: uuid::Uuid::now_v7().as_u128(),
+                        id: uuid::Uuid::now_v7().as_u128().to_string(),
                         platform: "twitch".to_string(),
                         channel: name_for_handler.clone(),
                         username: user.display_name.clone(),
@@ -109,7 +112,7 @@ pub async fn listen_to_twitch(
                         conn.execute(
                             "INSERT INTO messages (id, platform, channel, username, content, additional_info, timestamp, published) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, 0)",
                             rusqlite::params![
-                                chat_message.id.to_le_bytes(),
+                                chat_message.id.parse::<u128>().unwrap().to_le_bytes(),
                                 chat_message.platform,
                                 chat_message.channel,
                                 chat_message.username,
@@ -161,7 +164,7 @@ pub fn get_messages(
     let mut stmt = conn.prepare(&query)?;
     let message_iter = stmt.query_map(rusqlite::params_from_iter(params), |row| {
         Ok(crate::models::ChatMessage {
-            id: row.get::<_, Vec<u8>>(0)?.as_slice().try_into().map(u128::from_le_bytes).unwrap_or(0),
+            id: row.get::<_, Vec<u8>>(0)?.as_slice().try_into().map(u128::from_le_bytes).unwrap_or(0).to_string(),
             platform: row.get(1)?,
             channel: row.get(2)?,
             username: row.get(3)?,
@@ -207,7 +210,7 @@ pub async fn listen_to_youtube(
                     } = c
                     {
                         let chat_message = crate::models::ChatMessage {
-                            id: uuid::Uuid::now_v7().as_u128(),
+                            id: uuid::Uuid::now_v7().as_u128().to_string(),
                             platform: "youtube".to_string(),
                             channel: name_for_handler.clone(),
                             username: {
@@ -234,7 +237,7 @@ pub async fn listen_to_youtube(
                             conn.execute(
                                 "INSERT INTO messages (id, platform, channel, username, content, additional_info, timestamp, published) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, 0)",
                                 rusqlite::params![
-                                    chat_message.id.to_le_bytes(),
+                                    chat_message.id.parse::<u128>().unwrap().to_le_bytes(),
                                     chat_message.platform,
                                     chat_message.channel,
                                     chat_message.username,
@@ -266,7 +269,7 @@ pub async fn listen_to_youtube(
 
 pub fn new_sys_msg(content: &str) -> crate::models::ChatMessage {
     crate::models::ChatMessage {
-        id: uuid::Uuid::now_v7().as_u128(),
+        id: uuid::Uuid::now_v7().as_u128().to_string(),
         platform: "system".to_string(),
         channel: "system".to_string(),
         username: "system".to_string(),
@@ -292,7 +295,7 @@ pub fn publish_message(
     let mut rows = stmt.query(rusqlite::params![bytes])?;
     if let Some(row) = rows.next()? {
         let chat_message = crate::models::ChatMessage {
-            id: row.get::<_, Vec<u8>>(0)?.as_slice().try_into().map(u128::from_le_bytes).unwrap_or(0),
+            id: row.get::<_, Vec<u8>>(0)?.as_slice().try_into().map(u128::from_le_bytes).unwrap_or(0).to_string(),
             platform: row.get(1)?,
             channel: row.get(2)?,
             username: row.get(3)?,
@@ -324,4 +327,16 @@ pub fn stop_listening_to_channel(
         info!("No active listeners for platform: {}", platform);
     }
     Ok(())
+}
+
+pub fn parse_args() -> Args {
+    let mut args = Args::parse();
+
+    if args.host.to_lowercase() == "localhost" {
+        warn!("host is localhost; using 127.0.0.1");
+        args.host = "127.0.0.1".to_string();
+    }
+
+    info!("Starting server on http://{}:{}", args.host, args.port);
+    args
 }
