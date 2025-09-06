@@ -43,19 +43,8 @@ pub struct Args {
 
 #[derive(serde::Serialize, serde::Deserialize, Debug)]
 pub struct Channel {
-    pub id: u128,
+    pub id: String,
     pub name: String,
     pub platform: String,
     pub listen: bool,
-}
-
-#[derive(serde::Serialize, serde::Deserialize, Debug)]
-pub enum AdminCommand {
-    ListenChannel { name: String, platform: String },
-    UnlistenChannel { name: String, platform: String },
-    ConfirmMessage { id: String },
-    AddChannel { name: String, platform: String },
-    RemoveChannel { name: String, platform: String },
-    GetChannels,
-    GetMessages { limit: usize, before: Option<u64> },
 }

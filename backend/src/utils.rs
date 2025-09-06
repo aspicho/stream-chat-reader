@@ -51,7 +51,7 @@ pub fn get_channels(conn: &rusqlite::Connection) -> rusqlite::Result<Vec<crate::
     
     let channel_iter = stmt.query_map([], |row| {
         Ok(crate::models::Channel {
-            id: row.get::<_, Vec<u8>>(0)?.as_slice().try_into().map(u128::from_le_bytes).unwrap_or(0),
+            id: row.get::<_, Vec<u8>>(0)?.as_slice().try_into().map(u128::from_le_bytes).unwrap_or(0).to_string(),
             name: row.get(1)?,
             platform: row.get(2)?,
             listen: row.get::<_, i32>(3)? != 0,
@@ -265,19 +265,6 @@ pub async fn listen_to_youtube(
 
     Ok(())
 
-}
-
-pub fn new_sys_msg(content: &str) -> crate::models::ChatMessage {
-    crate::models::ChatMessage {
-        id: uuid::Uuid::now_v7().as_u128().to_string(),
-        platform: "system".to_string(),
-        channel: "system".to_string(),
-        username: "system".to_string(),
-        content: content.to_string(),
-        additional_info: None,
-        timestamp: chrono::Utc::now().timestamp_millis() as u64,
-        published: true,
-    }
 }
 
 pub fn publish_message(
