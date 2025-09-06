@@ -1,11 +1,11 @@
 use std::{collections::HashMap, sync::{atomic::AtomicUsize, Arc, Mutex}};
 
-use blake3::Hash;
+use clap::Parser;
 use tokio::sync::broadcast;
 
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct ChatMessage {
-    pub id: u128,
+    pub id: String,
     pub platform: String,
     pub channel: String,
     pub username: String,
@@ -29,21 +29,22 @@ pub struct AppState {
     pub listened_channels: Arc<Mutex<HashMap<String, HashMap<String, tokio::task::JoinHandle<()>>>>>, 
 }
 
-#[derive(serde::Serialize, serde::Deserialize, Debug)]
-pub struct Channel {
-    pub id: u128,
-    pub name: String,
-    pub platform: String,
-    pub listen: bool,
+#[derive(Parser, Debug, Clone)]
+#[command(version, about, long_about = None)]
+pub struct Args {
+    /// The address to bind the server to
+    #[arg(short = 'H', long, default_value = "127.0.0.1")]
+    pub host: String,
+    
+    /// The port to bind the server to
+    #[arg(short, long, default_value = "3000")]
+    pub port: u16,
 }
 
 #[derive(serde::Serialize, serde::Deserialize, Debug)]
-pub enum AdminCommand {
-    ListenChannel { name: String, platform: String },
-    UnlistenChannel { name: String, platform: String },
-    ConfirmMessage { id: String },
-    AddChannel { name: String, platform: String },
-    RemoveChannel { name: String, platform: String },
-    GetChannels,
-    GetMessages { limit: usize, before: Option<u64> },
+pub struct Channel {
+    pub id: String,
+    pub name: String,
+    pub platform: String,
+    pub listen: bool,
 }

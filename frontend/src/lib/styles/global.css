@@ -1,0 +1,51 @@
+:root {
+    --primary-color: #16a5d5;
+    --secondary-color: #541939;
+    --background-color: #3a3a3a;
+    --text-color: #ffffff;
+    --border-color: #3c3c3c;
+    --card-background-color: #2a2a2a;
+    --hover-background-color: #444444;
+    --published-color: #4caf50;
+    --queue-color: #ff9800;
+    --published-hover-color: #45a049;
+    --queue-hover-color: #e68a00;
+    --text-secondary-color: #bbbbbb;
+    --twitch-color: #9146ff;
+    --youtube-color: #ff0000;
+}
+
+body {
+    margin: 0;
+    font-family: Arial, sans-serif;
+    color: var(--text-color);
+}
+
+.approve-queue, .message-list {
+    border: 1px solid var(--border-color);
+    padding: 1rem;
+    margin-top: 1rem;
+    border-radius: 8px;
+    background-color: var(--card-background-color);
+    flex: 1;
+    min-width: 0;
+}
+
+.list {
+    overflow-y: auto;
+    max-height: 600px;
+    margin-top: 1rem;
+}
+
+.list-item {
+    border-bottom: 1px solid var(--border-color);
+    padding: 0.5rem 0;
+}
+
+.list-item:last-child {
+    border-bottom: none;
+}
+
+.list-item:hover {
+    background-color: var(--hover-background-color);
+}

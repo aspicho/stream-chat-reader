@@ -16,4 +16,4 @@ cp backend/target/debug/stream-chat-reader ./server
 HOST=${1:-localhost}
 PORT=${2:-8080}
 
-./server --host $HOST --port $PORT --dev
+./server --host $HOST --port $PORT

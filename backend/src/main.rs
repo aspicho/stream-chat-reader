@@ -1,12 +1,12 @@
-use std::{collections::HashMap, net::SocketAddr, sync::{atomic::{AtomicUsize, Ordering}, Arc, Mutex}};
+use std::{collections::HashMap, sync::{atomic::{AtomicUsize, Ordering}, Arc, Mutex}};
 use tracing::{info, warn};
 use axum::{extract::{ws::WebSocket, Path, Query, State, WebSocketUpgrade}, http::StatusCode, response::Response, routing::{any, delete, get, post}, Json, Router};
 use tokio::sync::broadcast;
 use tower_http::cors::{Any, CorsLayer};
+use tower_http::services::ServeDir;
 use futures_util::{sink::SinkExt, stream::{StreamExt, SplitSink, SplitStream}};
-use tracing_subscriber::util;
 
-use crate::models::{AdminCommand, AppState};
+use crate::{models::AppState, utils::parse_args};
 
 mod utils;
 mod models;
@@ -109,173 +109,7 @@ async fn reader_admin_task(
         match msg {
             Ok(msg) => {
                 info!("Received admin message: {:?}", msg);
-                if let axum::extract::ws::Message::Text(text) = msg {
-                    if let Ok(command) = serde_json::from_str::<models::AdminCommand>(&text) {
-                        match command {
-                            models::AdminCommand::ListenChannel { name, platform } => {
-                                info!("Admin command: Listen to channel {} on platform {}", name, platform);
-                                let result = match platform.as_str() {
-                                    "twitch" => {
-                                        utils::listen_to_twitch(
-                                            name.clone(),
-                                            state.admin_panel_sender.clone(),
-                                            state.db_conn.clone(),
-                                            state.listened_channels.clone(),
-                                        ).await
-                                    },
-                                    "youtube" => {
-                                        utils::listen_to_youtube(
-                                            name.clone(),
-                                            state.admin_panel_sender.clone(),
-                                            state.db_conn.clone(),
-                                            state.listened_channels.clone(),
-                                        ).await
-                                    },
-                                    _ => {
-                                        Err(anyhow::anyhow!("Unknown platform: {}", platform))
-                                    }
-                                };
-
-                                if let Err(e) = result {
-                                    warn!("Failed to listen to channel {} on {}: {:?}", name, platform, e);
-                                    state.admin_panel_sender.send(
-                                        utils::new_sys_msg(&format!("Failed to listen to {} on {}: {:?}", name, platform, e))
-                                    ).ok();
-
-                                } else {
-                                    info!("Started listening to {} on {}", name, platform);
-                                    state.admin_panel_sender.send(
-                                        utils::new_sys_msg(&format!("Started listening to {} on {}", name, platform))
-                                    ).ok();
-                                }
-                            },
-
-                            models::AdminCommand::UnlistenChannel { name, platform } => {
-                                info!("Admin command: Unlisten from channel {} on platform {}", name, platform);
-                                match utils::stop_listening_to_channel(
-                                    &platform.clone(),
-                                    &name.clone(),
-                                    state.listened_channels.clone()
-                                ) {
-                                    Ok(_) => {
-                                        info!("Stopped listening to {} on {}", name, platform);
-                                        state.admin_panel_sender.send(
-                                            utils::new_sys_msg(&format!("Stopped listening to {} on {}", name, platform))
-                                        ).ok();
-                                    }
-                                    Err(e) => {
-                                        warn!("Failed to stop listening to {} on {}: {:?}", name, platform, e);
-                                        state.admin_panel_sender.send(
-                                            utils::new_sys_msg(&format!("Failed to stop listening to {} on {}: {:?}", name, platform, e))
-                                        ).ok();
-                                    }
-                                }
-                            },
-
-                            models::AdminCommand::ConfirmMessage { id} => {
-                                info!("Admin command: Confirm message {}", id);
-                                match utils::publish_message(
-                                    &state.db_conn.lock().unwrap(),
-                                    id.parse::<u128>().unwrap_or(0),
-                                    &state.client_sender
-                                ) {
-                                    Ok(_) => {
-                                        info!("Message {} published to clients", id);
-                                        state.admin_panel_sender.send(
-                                            utils::new_sys_msg(&format!("Message {} published", id))
-                                        ).ok();
-                                    }
-                                    Err(e) => {
-                                        warn!("Failed to publish message {}: {:?}", id, e);
-                                        state.admin_panel_sender.send(
-                                            utils::new_sys_msg(&format!("Failed to publish message {}: {:?}", id, e))
-                                        ).ok();
-                                    }
-                                }
-                            },
-
-                            models::AdminCommand::AddChannel { name, platform } => {
-                                info!("Admin command: Add channel {} on platform {}", name, platform);
-                                match utils::add_channel(&state.db_conn.lock().unwrap(), &name, &platform) {
-                                    Ok(_) => {
-                                        info!("Channel {} on {} added to database", name, platform);
-                                        state.admin_panel_sender.send(
-                                            utils::new_sys_msg(&format!("Channel {} on {} added", name, platform))
-                                        ).ok();
-                                    }
-                                    Err(e) => {
-                                        warn!("Failed to add channel {} on {}: {:?}", name, platform, e);
-                                        state.admin_panel_sender.send(
-                                            utils::new_sys_msg(&format!("Failed to add channel {} on {}: {:?}", name, platform, e))
-                                        ).ok();
-                                    }
-                                }
-                            },
-
-                            models::AdminCommand::RemoveChannel { name, platform } => {
-                                info!("Admin command: Remove channel {} on platform {}", name, platform);
-                                match utils::delete_channel(&state.db_conn.lock().unwrap(), &platform, &name) {
-                                    Ok(_) => {
-                                        info!("Channel {} on {} removed from database", name, platform);
-                                        state.admin_panel_sender.send(
-                                            utils::new_sys_msg(&format!("Channel {} on {} removed", name, platform))
-                                        ).ok();
-                                    }
-                                    Err(e) => {
-                                        warn!("Failed to remove channel {} on {}: {:?}", name, platform, e);
-                                        state.admin_panel_sender.send(
-                                            utils::new_sys_msg(&format!("Failed to remove channel {} on {}: {:?}", name, platform, e))
-                                        ).ok();
-                                    }
-                                }
-                            },
-
-                            models::AdminCommand::GetChannels => {
-                                info!("Admin command: Get channels");
-                                match utils::get_channels(&state.db_conn.lock().unwrap()) {
-                                    Ok(channels) => {
-                                        let response = serde_json::to_string(&channels).unwrap_or_else(|_| "[]".to_string());
-                                        state.admin_panel_sender.send(
-                                            utils::new_sys_msg(&response)
-                                        ).ok();
-                                    },
-                                    Err(e) => warn!("Failed to get channels: {:?}", e),
-                                }
-                            },
-
-                            models::AdminCommand::GetMessages { limit, before } => {
-                                info!("Admin command: Get messages");
-                                match utils::get_messages(limit, before, &state.db_conn.lock().unwrap()) {
-                                    Ok(messages) => {
-                                        let json_messages: Vec<serde_json::Value> = messages.iter().map(|msg| {
-                                            serde_json::json!({
-                                                "id": msg.id.to_string(),
-                                                "platform": msg.platform,
-                                                "channel": msg.channel,
-                                                "username": msg.username,
-                                                "content": msg.content,
-                                                "additional_info": msg.additional_info,
-                                                "timestamp": msg.timestamp,
-                                                "published": msg.published
-                                            })
-                                        }).collect();
-
-                                        let response = serde_json::to_string(&json_messages).unwrap_or_else(|_| "[]".to_string());
-                                        state.admin_panel_sender.send(
-                                            utils::new_sys_msg(&response)
-                                        ).ok();
-                                    },
-                                    Err(e) => warn!("Failed to get messages: {:?}", e),
-                                }
-                            },
-                        }
-
-                    } else {
-                        warn!("Failed to parse admin command: {}", text);
-                    }
-                }
             }
-
             Err(e) => {
                 warn!("Error receiving admin message: {:?}", e);
                 break;
@@ -597,19 +431,22 @@ async fn main() {
         }
     }
 
+    let args = parse_args();
+
     let app = Router::new()
-        .route("/ws", any(client_ws_handler))
-        .route("/admin/ws", any(admin_ws_handler))
+        .fallback_service(ServeDir::new("static"))
+        .route("/api/ws", any(client_ws_handler))
+        .route("/api/admin/ws", any(admin_ws_handler))
         
-        .route("/messages", get(get_messages))
-        .route("/publish/{id}", post(publish_message))
+        .route("/api/messages", get(get_messages))
+        .route("/api/publish/{id}", post(publish_message))
         
-        .route("/channels", get(get_channels))
-        .route("/channels/{platform}/{id}", post(add_channel))
-        .route("/channels/{platform}/{id}", delete(delete_channel))
+        .route("/api/channels", get(get_channels))
+        .route("/api/channels/{platform}/{id}", post(add_channel))
+        .route("/api/channels/{platform}/{id}", delete(delete_channel))
         
-        .route("/listen/{platform}/{id}", get(listen_channel))
-        .route("/unlisten/{platform}/{id}", post(unlisten_channel))
+        .route("/api/listen/{platform}/{id}", post(listen_channel))
+        .route("/api/unlisten/{platform}/{id}", post(unlisten_channel))
 
         .layer(
             CorsLayer::new()
@@ -619,9 +456,9 @@ async fn main() {
         )
         .with_state(state);
     
-    let addr: SocketAddr = "0.0.0.0:3000".parse().unwrap();
-    tracing::info!("Listening on http://{addr}");
-    let listener = tokio::net::TcpListener::bind(addr).await.unwrap();
+    tracing::info!("Server running on {}:{}", args.host, args.port);
+    let listener = tokio::net::TcpListener::bind((args.host, args.port)).await
+        .expect("Failed to bind TCP listener");
 
     axum::serve(listener, app).await.unwrap();
 }
